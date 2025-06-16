@@ -1,0 +1,134 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Install GSCluster from Github (already installed on 2020.01.11)
+```{r}
+#install.packages('devtools')
+#library(devtools)
+#install_github('unistbig/GScluster', force=TRUE)
+#install_github('unistbig/shinyCyJS', force=TRUE)
+
+```
+
+
+Library import
+```{r}
+library(tidyverse)
+library(fclust)
+library(R.matlab)
+library(mailR)
+```
+
+Load relevant data
+```{r}
+
+######## Load meta-information for the relevant pathways
+distMetaName <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Matlab\\2020.01.13_EnrichRpathways_ORAI3.mat"
+
+distMeta <- readMat(distMetaName)
+distMeta <- distMeta[[1]]
+
+temp <- c()
+for (i in 1:length(distMeta)) {
+  val <- distMeta[[i]][[1]][1]
+  temp <- c(temp, val)
+}
+distMeta <- matrix(temp,
+                  nrow=length(temp)/3,
+                  ncol=3)
+
+######## Load the distance matrix
+distMatName <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Matlab\\2020.01.13_EnrichR_ORAI3pathways.csv"
+
+distMat <- read.csv(distMatName,
+                    header=FALSE)
+
+# Creates row & col names
+pathNames <- c()
+for (i in 1:length(distMeta[,1])) {
+  pSource <- distMeta[i,1]
+  pName <- distMeta[i,2]
+  val <- paste(pSource,pName,
+               sep=": ")
+  pathNames <- c(pathNames, val)
+}
+rownames(distMat) <- pathNames
+colnames(distMat) <- pathNames
+
+# Reflects the values (to replace the NaN values)
+matColLen <- length(distMat[1,])
+matRowLen <- length(distMat[,1])
+for (i in 1:(matRowLen-1)) {
+  val <- distMat[c((i+1):matRowLen),i]
+  distMat[i,c((i+1):matColLen)] <- t(val)
+}
+
+```
+
+Performs fuzzy clustering
+```{r}
+distMatFuzzy <- distMat
+distMatFuzzy <- 1-distMatFuzzy
+
+clustIndices <- c()
+for (i in 2:20) {
+  print(i)
+  clust <- Fclust(distMatFuzzy,
+                  k=i,
+                  distance=TRUE)
+  clustIndex <- Fclust.index(clust)
+  clustIndices <- c(clustIndices, clustIndex[[5]])
+  
+}
+
+
+write.table(clustIndices,
+            file="output.csv",
+            sep=",",
+            row.names=FALSE,
+            col.names=FALSE,
+            quote=FALSE,
+            append=FALSE)
+
+send.mail(from="anthonyyt@gmail.com",
+          to="anthonyyt@gmail.com",
+          subject="SCRIPT FINISHEDD",
+          body="N/A",
+          smtp=list(host.name="smtp.gmail.com",
+                    port=465,
+                    user.name="anthonyyt",
+                    passwd="J4ckwh1t3.",
+                    ssl=TRUE),
+          authenticate=TRUE,
+          send=TRUE)
+
+
+```
+
+
+
+Performs k-medioids
+
+
+
+Performs hierarchical clustering
+
+
+
+
+
+
+
+
+
+
+
+
+

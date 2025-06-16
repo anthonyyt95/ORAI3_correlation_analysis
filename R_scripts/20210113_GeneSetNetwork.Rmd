@@ -1,0 +1,230 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+Load packages
+```{r}
+
+library(igraph)
+library(bayestestR)
+library(dplyr)
+library(stringr)
+library(RColorBrewer)
+library(fields)
+
+setwd("E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\R")
+
+```
+
+```{r}
+
+pathwayRefFile <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2020.04.23_ORAI3correlations2\\enrichRpathways.txt"
+pathwayFolder <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2020.04.23_ORAI3correlations2\\ARCHS4Correlations"
+linkageThresh <- 0.2
+
+
+# Acquires relevant pathways
+pathwayFiles <- dir(pathwayFolder)
+pathwayResOut <- c()
+for (i in 1:length(pathwayFiles)) {
+  file <- paste(pathwayFolder,pathwayFiles[i],
+                sep="\\")
+  pathwayRes <- read.delim(file,
+                           header=TRUE,
+                           sep="\t")
+  pathwayRes <- pathwayRes[pathwayRes$P.value < 0.01,]
+  pathwayResOut <- rbind(pathwayResOut,
+                         pathwayRes)
+}
+sortedInd <- sort.int(pathwayResOut$Combined.Score,
+                      index.return=TRUE)
+sortedInd <- sortedInd$ix
+pathwayResOut <- pathwayResOut[sortedInd,]
+
+uniquePathways <- unique(pathwayResOut$Term)
+pathwaysOut <- c()
+for (i in 1:length(uniquePathways)) {
+  loc <- which(pathwayResOut$Term==uniquePathways[i])
+  if (!(length(loc)==0)) {
+    pathwaysOut <- rbind(pathwaysOut, pathwayResOut[loc[1],])
+  }
+}
+
+# Acquires pathway + genes
+pathwayRef <- read.delim(pathwayRefFile,
+                         header=FALSE)
+pathwayGenes <- c()
+exclude <- c()
+for (i in 1:dim(pathwaysOut)[1]) {
+  pathway <- pathwaysOut[i,1]
+  loc <- which(pathwayRef$V1==pathway)
+  if (!(length(loc)==0)) {
+    pathGenes <- pathwayRef[loc[1],c(3:dim(pathwayRef)[2])]
+    excl <- which(pathGenes=="")
+    pathGenes <- pathGenes[-excl]
+    
+    pathGenes <- paste(pathGenes,
+                     collapse="|")
+    pathwayGenes <- rbind(pathwayGenes, c(pathway,pathGenes))
+  } else {
+    exclude <- c(exclude, i) 
+  }
+}
+if (!(length(exclude)==0)) {
+  pathwaysOut <- pathwaysOut[-exclude,]  
+}
+rownames(pathwaysOut) <- c(1:dim(pathwaysOut)[1])
+rownames(pathwayGenes) <- c(1:dim(pathwayGenes)[1])
+pathwaysOut <- cbind(rownames(pathwaysOut),pathwaysOut)
+pathwayGenes <- cbind(rownames(pathwayGenes),pathwayGenes)
+
+overlapOut <- c()
+for (i in 1:dim(pathwaysOut)[1]) {
+  overlap <- strsplit(pathwaysOut$Overlap[i],
+                      split="/",
+                      fixed=TRUE)
+  overlap <- overlap[[1]]
+  overlap <- as.numeric(overlap)
+  overlap <- overlap[1]/overlap[2]
+  overlapOut <- c(overlapOut,overlap)
+}
+pathwaysOut <- cbind(pathwaysOut,overlapOut)
+write.table(pathwaysOut,
+            file="output.txt",
+            append=FALSE,
+            quote=FALSE,
+            sep="\t",
+            col.names=NA)
+
+
+# Create interaction/linkage data
+p2PathwayGenes <- pathwayGenes
+links <- c()
+for (i in 1:(dim(pathwayGenes)[1]-1)) {
+  p1ID <- pathwayGenes[i,1]
+  p1Genes <- strsplit(pathwayGenes[i,3],
+                      split="|",
+                      fixed=TRUE)
+  p1Genes <- p1Genes[[1]]
+  p2PathwayGenes <- p2PathwayGenes[-1,]
+  
+  if (i==dim(pathwayGenes)[1]-1) {
+    p2ID  <- p2PathwayGenes[1]
+    p2Genes <- strsplit(p2PathwayGenes,
+                        split="|",
+                        fixed=TRUE)
+    p2Genes <- p2Genes[[1]]
+    
+    # Calculates overlap score
+    numerator <- length(intersect(p1Genes,
+                                  p2Genes))
+    denominator <- min(c(length(p1Genes),length(p2Genes)))
+    score <- numerator/denominator
+    
+    links <- rbind(links, c(p1ID,p2ID,score))
+    
+    next
+  }
+  
+  for (j in 1:dim(p2PathwayGenes)[1]) {
+    p2ID <- p2PathwayGenes[j,1]
+    p2Genes <- strsplit(p2PathwayGenes[j,3],
+                        split="|",
+                        fixed=TRUE)
+    p2Genes <- p2Genes[[1]]
+    
+    # Calculates overlap score
+    numerator <- length(intersect(p1Genes,
+                                  p2Genes))
+    denominator <- min(c(length(p1Genes),length(p2Genes)))
+    score <- numerator/denominator
+    
+    links <- rbind(links, c(p1ID,p2ID,score))
+  }
+}
+loc <- which(links[,3] < linkageThresh)
+links[loc,3] <- 0
+loc <- which(links[,3]==0)
+links <- links[-loc,]
+
+# Creates color palette
+hingeColors <- rbind(c(127,39,39)/255,
+                     c(255,62,62)/255,
+                     c(255,255,255)/255)
+hingeQuant <- c(100,50)
+rgbOut <- c()
+for (i in 1:length(hingeQuant)) {
+  rCol = seq(from=hingeColors[i,1],
+             to=hingeColors[i+1,1],
+             length.out=hingeQuant[i])
+  bCol = seq(from=hingeColors[i,2],
+             to=hingeColors[i+1,2],
+             length.out=hingeQuant[i])
+  gCol = seq(from=hingeColors[i,3],
+             to=hingeColors[i+1,3],
+             length.out=hingeQuant[i])
+  rgbOut <- rbind(rgbOut, cbind(rCol,bCol,gCol))
+}
+
+colPalette <- c()
+for (i in 1:dim(rgbOut)[1]) {
+  colPalette <- c(colPalette,
+                  rgb(rgbOut[i,1],rgbOut[i,2],rgbOut[i,3]))
+}
+colNum <- seq(from=max(-log(pathwaysOut$P.value)),
+              to=min(-log(pathwaysOut$P.value)),
+              length.out=length(colPalette))
+
+colorOut <- c()
+for (i in 1:length(pathwaysOut$P.value)) {
+  val <- -log(pathwaysOut$P.value[i])
+  loc <- which.min(abs(colNum-val))
+  colorOut <- c(colorOut, colPalette[loc])
+}
+
+# Sets up network plot (with igraph)
+net <- graph_from_data_frame(d=links,
+                             vertices=pathwaysOut,
+                             directed=FALSE)
+
+pdf(file="output.pdf",
+    width=48,
+    height=48)
+plot(net,
+     vertex.label.color="black",
+     vertex.label.cex=3,
+     vertex.label=NA,
+     vertex.size=pathwaysOut$overlapOut*80,
+     vertex.color=colorOut,
+     edge.color=rgb(0.8,0.8,0.8),
+     edge.width=as.numeric(links[,3])*30)
+dev.off
+
+```
+
+Creates colorbar for above
+```{r}
+# Create colorbar
+x <- 1
+y <- seq(1:length(colPalette))
+z <- matrix(1:length(colPalette),nrow=1)
+png(filename="colorbar.png",
+    width=300,
+    height=2000)
+image(x,y,z,
+      col=colPalette,
+      axes=FALSE,
+      xlab="",
+      ylab="",
+      width=1,
+      heigth=5)
+box(lwd=5)
+dev.off
+
+```
+
+
+
+
+

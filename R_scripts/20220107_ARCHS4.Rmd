@@ -1,0 +1,286 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+Header
+```{r}
+
+setwd("E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\R")
+library(rhdf5)
+library(xlsx)
+library(DESeq2)
+library(stringr)
+
+
+```
+
+
+Acquire expression datafile (Homo sapiens)
+```{r}
+
+h5File <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Pan-Experiment Data\\Archs4_Tissues\\HumanGeneCounts\\human_matrix_v10.h5"
+cellSelecFile <-  "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2022.01.07_ARCHS4analysis\\ARCHS4Hs_sampList_immuneCellDetail.csv"
+cellRefFile <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2022.01.07_ARCHS4analysis\\TissueOrder_Hs.txt"
+genesRef <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Pan-Experiment Data\\Archs4_Tissues\\HumanGeneCounts\\Hs_Archs4_Genes.txt"
+selecGenes <- c("ORAI1",
+                "ORAI2",
+                "ORAI3")
+  
+# Acquires the samples manually selected (by GSM)
+cellSelec <- read.csv(cellSelecFile,
+                      header=FALSE)
+rownames(cellSelec) <- c(1:dim(cellSelec)[1])
+cellSelec <- cellSelec[,c(2:length(cellSelec[1,]))]
+for (i in 1:length(cellSelec[,1])) {
+  cellSelec[i,2] <- str_trim(cellSelec[i,2])
+}
+
+
+
+h5gsmList <- h5read(h5File,
+                    name="meta/samples/geo_accession")
+
+
+sampInd <- c()
+for (i in 1:length(cellSelec[,1])) {
+  loc <- which(h5gsmList==cellSelec[i,1])
+  if (!(length(loc)==0)) {
+    sampInd <- c(sampInd,loc)
+  }
+}
+
+# Acquires only genes with gene length information
+genes <- read.table(genesRef)
+h5genes <- h5read(h5File,
+                  name="meta/genes/genes")
+geneInd <- c()
+for (i in 1:length(genes[,1])) {
+  gene <- genes[i,1]
+  loc <- which(h5genes==gene)
+  if (!(length(loc)==0)) {
+    geneInd <- c(geneInd,
+                 loc)
+  }
+}
+
+# Acquires expression values (given 'sampID' & 'geneID')
+expr <- h5read(h5File,
+               name="data/expression",
+               index=list(sampInd,geneInd))
+expr <- t(expr)
+
+# TPM conversion
+tpmVal <- expr/(genes[,3]/(10^3))
+normFac <- apply(tpmVal,2,sum)/(10^6)
+for (i in 1:length(tpmVal[1,])) {
+  tpmVal[,i] <- tpmVal[,i]/normFac[i]
+}
+
+# Organizes data by cell-type
+cellRef <- read.delim(cellRefFile,
+                      header=FALSE,
+                      sep="*")
+
+for (i in 1:length(cellRef[,1])) {
+  tiss <- cellRef[i,1]
+  tiss <- str_trim(tiss)
+  tiss <- str_split(tiss,
+                    pattern="_")
+  tiss <- tiss[[1]]
+  
+  # Acquires indices of relevant tissues
+  tissSamp <- c()
+  for (j in 1:length(tiss)) {
+    loc <- which(cellSelec[,2]==tiss[j])
+    tissSamp <- c(tissSamp,
+                  loc)
+  }
+  
+  # Averages genes & appends to matrix
+  val <- tpmVal[,tissSamp]
+  isMat <- class(val)=="matrix"
+  if (isMat[1]) {
+    val <- rowMeans(val)
+  }
+  
+  if (i==1) {
+    valOut <- val
+    sampOut <- tiss[1]
+  } else {
+    valOut <- cbind(valOut,
+                    val)
+    sampOut <- c(sampOut,
+                 tiss[1])
+  }
+}
+
+# Subset relevant genes
+missing <- c()
+for (i in 1:length(selecGenes)) {
+  gene <- selecGenes[i]
+  loc <- which(genes[,1]==gene)
+  
+  if (length(loc)==0) {
+    missing <- c(missing, gene)
+    next
+  }
+  
+  if (i==1) {
+    valOut2 <- valOut[loc,]
+    genesOut <- gene
+  } else {
+    valOut2 <- rbind(valOut2,
+                     valOut[loc,])
+    genesOut <- c(genesOut,
+                  gene)
+  }
+  
+}
+
+write.table(valOut2,
+            file="output_Hs.txt",
+            append=FALSE,
+            quote=FALSE,
+            sep="\t")
+
+
+```
+
+Acquire expression datafile (Mus musculus)
+```{r}
+
+h5File <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Pan-Experiment Data\\Archs4_Tissues\\MouseGeneCounts\\mouse_matrix.h5"
+genesRef <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Pan-Experiment Data\\Archs4_Tissues\\MouseGeneCounts\\Mm_Archs4_Genes.txt"
+cellSelecFile <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2022.01.07_ARCHS4analysis\\ARCHS4Mm_sampList_immuneCellDetail.csv"
+cellRefFile <- "E:\\Documents\\NYU\\NYU Langone\\PhD\\Feske Lab\\Experiments\\05.20.18_ORAI3 Analyses\\Data\\2022.01.07_ARCHS4analysis\\TissueOrder_Mm.txt"
+selecGenes <- c("Orai1",
+                "Orai2",
+                "Orai3")
+
+# Acquires the samples manually selected (by GSM)
+cellSelec <- read.csv(cellSelecFile,
+                      header=FALSE)
+for (i in 1:length(cellSelec[,1])) {
+  cellSelec[i,2] <- str_trim(cellSelec[i,2])
+}
+
+
+h5gsmList <- h5read(h5File,
+                    name="meta/Sample_geo_accession")
+
+sampInd <- c()
+for (i in 1:length(cellSelec[,1])) {
+  loc <- which(h5gsmList==cellSelec[i,1])
+  if (!(length(loc)==0)) {
+    sampInd <- c(sampInd,loc)
+  }
+}
+
+# Acquires only genes with gene length information
+genes <- read.delim(genesRef)
+h5genes <- h5read(h5File,
+                  name="meta/genes")
+geneInd <- c()
+include <- c()
+for (i in 1:length(genes[,1])) {
+  gene <- genes[i,1]
+  loc <- which(h5genes==gene)
+  if (!(length(loc)==0)) {
+    geneInd <- c(geneInd,
+                 loc)
+    include <- c(include,i)
+  }
+}
+genes <- genes[include,]
+
+# Acquires expression values (given 'sampID' & 'geneID')
+expr <- h5read(h5File,
+               name="data/expression",
+               index=list(geneInd,sampInd))
+
+# TPM conversion
+tpmVal <- expr/(genes[,3]/(10^3))
+normFac <- apply(tpmVal,2,sum)/(10^6)
+for (i in 1:length(tpmVal[1,])) {
+  tpmVal[,i] <- tpmVal[,i]/normFac[i]
+}
+
+# Organizes data by cell-type
+cellRef <- read.delim(cellRefFile,
+                      header=FALSE,
+                      sep="*")
+
+for (i in 1:length(cellRef[,1])) {
+  tiss <- cellRef[i,1]
+  tiss <- str_trim(tiss)
+  tiss <- str_split(tiss,
+                    pattern="_")
+  tiss <- tiss[[1]]
+  
+  print(i)
+  
+  # Acquires indices of relevant tissues
+  tissSamp <- c()
+  for (j in 1:length(tiss)) {
+    loc <- which(cellSelec[,10]==tiss[j])
+    tissSamp <- c(tissSamp,
+                  loc)
+  }
+  
+  # Averages genes & appends to matrix
+  val <- tpmVal[,tissSamp]
+  isMat <- class(val)=="matrix"
+  if (isMat[1]) {
+    val <- rowMeans(val)
+  }
+  
+  if (i==1) {
+    valOut <- val
+    sampOut <- tiss[1]
+  } else {
+    valOut <- cbind(valOut,
+                    val)
+    sampOut <- c(sampOut,
+                 tiss[1])
+  }
+}
+
+# Subset relevant genes
+missing <- c()
+for (i in 1:length(selecGenes)) {
+  gene <- selecGenes[i]
+  loc <- which(tolower(genes[,1])==tolower(gene))
+  
+  if (length(loc)==0) {
+    missing <- c(missing, gene)
+    next
+  }
+  
+  if (i==1) {
+    valOut2 <- valOut[loc,]
+    genesOut <- gene
+  } else {
+    valOut2 <- rbind(valOut2,
+                     valOut[loc,])
+    genesOut <- c(genesOut,
+                  gene)
+  }
+  
+}
+
+write.table(valOut2,
+            file="output_Mm.txt",
+            append=FALSE,
+            quote=FALSE,
+            sep="\t")
+
+
+
+
+
+```
+
+
+
+
